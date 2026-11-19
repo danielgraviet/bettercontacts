@@ -1,0 +1,95 @@
+# Fastfile — the release automation for BetterContacts.
+#
+# Lanes here are what CI runs (and what you run locally with `make` targets):
+#
+#   bundle exec fastlane test     — lint-free build + full unit/UI test suite
+#   bundle exec fastlane beta     — build + sign + upload to TestFlight
+#   bundle exec fastlane release   — build + sign + submit to App Store review
+#
+# Never edit signing identities or build numbers by hand in Xcode; the lanes
+# below own them.
+
+default_platform(:ios)
+
+platform :ios do
+
+  desc "Generates the Xcode project from project.yml (the .xcodeproj is never committed)"
+  private_lane :generate_project do
+    # fastlane executes shell commands from the fastlane/ directory, so step
+    # out to the repo root where project.yml lives.
+    Dir.chdir("..") do
+      sh(command: "xcodegen generate", log: true)
+    end
+  end
+
+  desc "Runs the full test suite on an automatically selected iPhone simulator"
+  lane :test do
+    generate_project
+    run_tests(
+      project: "BetterContacts.xcodeproj",
+      scheme: "BetterContacts",
+      result_bundle: true,
+      fail_build: true
+    )
+  end
+
+  desc "Builds the app and uploads it to TestFlight"
+  lane :beta do
+    generate_project
+    app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      duration: 1200,
+      in_house: false
+    )
+    match(type: "appstore", readonly: true)
+    build_app(
+      project: "BetterContacts.xcodeproj",
+      scheme: "BetterContacts",
+      clean: true,
+      export_method: "app-store",
+      xcargs: "CURRENT_PROJECT_VERSION=#{next_build_number}"
+    )
+    upload_to_testflight(skip_waiting_for_build_processing: true)
+  end
+
+  desc "Builds the app and submits it to App Store review"
+  lane :release do
+    generate_project
+    app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      duration: 1200,
+      in_house: false
+    )
+    match(type: "appstore", readonly: true)
+
+    # The git tag is the source of truth for the marketing version.
+    version = ENV.fetch("GITHUB_REF_NAME", "0.1.0").delete_prefix("v")
+    build_app(
+      project: "BetterContacts.xcodeproj",
+      scheme: "BetterContacts",
+      clean: true,
+      export_method: "app-store",
+      xcargs: "CURRENT_PROJECT_VERSION=#{next_build_number} MARKETING_VERSION=#{version}"
+    )
+    upload_to_app_store(
+      submit_for_review: true,
+      automatic_release: true,
+      skip_screenshots: true,
+      force: true
+    )
+  end
+
+  # TestFlight build numbers must always increase. For the very first upload,
+  # before App Store Connect knows about the app, fall back to the CI run number.
+  private_lane :next_build_number do
+    begin
+      latest_testflight_build_number + 1
+    rescue StandardError
+      ENV.fetch("GITHUB_RUN_NUMBER", "1").to_i
+    end
+  end
+end

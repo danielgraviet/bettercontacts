@@ -1,0 +1,39 @@
+included:
+  - Domain
+  - DomainTests
+  - DomainTestSupport
+  - BetterContacts
+  - BetterContactsTests
+  - BetterContactsUITests
+
+line_length:
+  warning: 150
+  error: 200
+
+identifier_name:
+  excluded:
+    - id
+    - lhs
+    - rhs
+
+type_body_length:
+  warning: 300
+
+file_length:
+  warning: 500
+
+opt_in_rules:
+  - empty_count
+  - empty_string
+  - first_where
+  - last_where
+  - literal_expression_end_indentation
+  - operator_usage_whitespace
+  - sorted_imports
+  - unneeded_parentheses_in_closure_argument
+  - vertical_whitespace_closing_braces
+
+# CI runs with `--strict`, so warnings are errors. Keep this list empty if you can;
+# rules that need work belong here only temporarily.
+disabled_rules:
+  - todo

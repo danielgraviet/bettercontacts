@@ -1,0 +1,6 @@
+BetterContacts works entirely on-device with the user's own contacts.
+
+- No account, no sign-in, no demo credentials required.
+- On first launch the app requests Contacts access; without it, the app shows an explanation and a Settings link.
+- Local notifications are optional and off by default; the user enables them from the Reminders screen.
+- No data is collected or transmitted anywhere.

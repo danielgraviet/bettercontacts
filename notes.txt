@@ -1,0 +1,9 @@
+app contacts, but just better. 
+- filtering
+- sorting
+- semantic search, "who did I meet this week?"
+- location tagging
+- smart reminders
+- birthdays
+- touchputs to keep close circle and keep relationship
+

@@ -1,0 +1,13 @@
+Your address book, with a memory.
+
+BetterContacts keeps your relationships alive instead of just storing names:
+
+- Search like you think: ask "who did I meet this week?" and get an answer, not a keyword match
+- Smart reminders tell you when a close friendship is going quiet
+- Never miss a birthday again
+- Tag where you met people, and find everyone in Berlin in one tap
+- Keep a close circle, and give it the attention it deserves
+
+Everything runs on your device. Your contacts never leave your phone — no accounts, no tracking, no cloud.
+
+Filtering, sorting, and touchpoints that keep your relationships warm. That's it. That's the app.

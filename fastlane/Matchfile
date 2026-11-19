@@ -1,0 +1,7 @@
+# Code signing lives in a private git repo of certificates and profiles
+# (fastlane match). Set MATCH_GIT_URL via environment; see README.md for the
+# one-time bootstrap.
+git_url(ENV["MATCH_GIT_URL"])
+storage_mode("git")
+type("appstore")
+app_identifier("com.danielgraviet.bettercontacts")

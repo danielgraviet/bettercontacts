@@ -1,0 +1,1 @@
+contacts,relationships,keep in touch,birthdays,reminders,natural language search

@@ -1,0 +1,41 @@
+# The Xcode project is generated from project.yml — regenerate with `xcodegen generate`
+BetterContacts.xcodeproj
+
+# Build artifacts
+build/
+DerivedData/
+*.ipa
+*.dSYM
+*.xcresult
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+
+# Swift Package Manager
+.build/
+Packages/
+
+# CocoaPods / Carthage
+Pods/
+Carthage/
+
+# Fastlane
+fastlane/report.xml
+fastlane/test_output/
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+
+# Ruby
+vendor/
+.bundle/
+
+# OS
+.DS_Store
+
+# Environment / secrets — never commit these
+.env
+*.p8
+*.mobileprovision

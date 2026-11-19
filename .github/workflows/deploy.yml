@@ -1,0 +1,109 @@
+name: Deploy
+
+# Continuous delivery, per README.md:
+#   - every merge to main  -> build + TestFlight upload (no human steps)
+#   - every v* tag        -> build + App Store submission (version = tag)
+#
+# Both jobs run the full test suite first; a red suite never ships.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never cancel an in-flight deploy; superseded runs simply queue.
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    name: Build & upload to TestFlight
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Set up Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+
+      - name: Install Fastlane
+        run: bundle install --jobs 4
+
+      - name: Run tests
+        run: bundle exec fastlane test
+
+      - name: Build and upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+        run: bundle exec fastlane beta
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-testflight
+          path: fastlane/test_output
+          if-no-files-found: ignore
+
+  appstore:
+    name: Build & submit to App Store
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Set up Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+
+      - name: Install Fastlane
+        run: bundle install --jobs 4
+
+      - name: Run tests
+        run: bundle exec fastlane test
+
+      - name: Build and submit to App Store
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+        run: bundle exec fastlane release
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-appstore
+          path: fastlane/test_output
+          if-no-files-found: ignore
