@@ -139,4 +139,33 @@ struct SearchEngineTests {
         // Then the tie falls back to name order
         #expect(result.map(\.id) == ["ada", "grace"])
     }
+
+    @Test("excludes the midnight that starts the following week")
+    func excludesTheMidnightThatStartsTheFollowingWeek() {
+        // Given interactions at both week boundaries
+        let monday = makeContact(id: "monday", lastInteractionDate: testDate(2001, 1, 1, hour: 0))
+        let followingMonday = makeContact(id: "next-monday", lastInteractionDate: testDate(2001, 1, 8, hour: 0))
+        let query = NaturalLanguageQueryParser.parse("this week", now: referenceNow, calendar: testCalendar)
+        let engine = SearchEngine(embedder: FakeEmbedder([:]))
+
+        // When searching this week's touchpoints
+        let result = engine.search(query, in: [followingMonday, monday])
+
+        // Then only the start of the current week matches
+        #expect(result.map(\.id) == ["monday"])
+    }
+
+    @Test("ranks a literal name match first even when its embedding disagrees")
+    func ranksALiteralNameMatchFirstEvenWhenItsEmbeddingDisagrees() {
+        // Given a name match with an unrelated embedding and a semantic-only match
+        let ada = makeContact(id: "ada", firstName: "Ada", notes: "accounting")
+        let grace = makeContact(id: "grace", firstName: "Grace", notes: "mathematics")
+        let embedder = FakeEmbedder(["accounting": [0, 1], "ada": [1, 0], "mathematics": [1, 0]])
+
+        // When searching by first name
+        let result = SearchEngine(embedder: embedder).search(ParsedQuery(freeText: "ada"), in: [grace, ada])
+
+        // Then the contact named Ada comes first
+        #expect(result.map(\.id) == ["ada", "grace"])
+    }
 }

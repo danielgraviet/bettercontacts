@@ -33,7 +33,7 @@ targets:
         CFBundleDisplayName: BetterContacts
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        NSContactsUsageDescription: BetterContacts uses your contacts to power filtering, smart reminders, birthdays, and natural language search. Your contacts stay on your device.
+        NSContactsUsageDescription: BetterContacts reads and updates your address book so you can manage contacts, search, and set reminders.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

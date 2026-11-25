@@ -17,11 +17,11 @@ unit tests are fast, deterministic, and easy to diagnose when they fail.
 
 Where we stand:
 
-| Layer | Tests | Scope |
-|---|---|---|
-| `DomainTests` | 61 tests | Unit — pure logic, no I/O, milliseconds each |
-| `BetterContactsTests` | 5 tests | Unit — ViewModel with a fake repository |
-| `BetterContactsUITests` | 1 test | Smoke — app launches and renders real data |
+| Layer | Scope |
+|---|---|
+| `DomainTests` | Unit tests for pure domain logic |
+| `BetterContactsTests` | View model unit tests and in-memory SwiftData repository integration tests |
+| `BetterContactsUITests` | Simulator smoke tests with a fixed sample address book |
 
 The broad tests exist to catch wiring mistakes the units can't see (target
 membership, storyboard/launch settings, the composition root). They do not
@@ -33,11 +33,9 @@ Every `DomainTests` file does a plain `import Domain` — **no `@testable`**.
 If a test needs `@testable` to reach something, that thing is an implementation
 detail and the test would be brittle by construction.
 
-The one exception is `BetterContactsTests`, which uses `@testable import
-BetterContacts` to reach the ViewModel. That's access-control pragmatics (the
-test bundle is outside the app module), not a license: those tests still only
-touch the ViewModel's public surface — `load`, `setSearchText`,
-`logInteraction`, and observable state.
+`BetterContactsTests` uses `@testable import BetterContacts` to access the app
+module’s internal view model and repository APIs. Tests drive those APIs and
+assert observable state or reloaded data.
 
 The practical payoff: internal refactors (renaming a private helper, splitting
 an engine, changing a data structure) never touch the test suite. Only *behavior
@@ -173,10 +171,10 @@ avoided because they can't say *why*.
 
 Following the chapter's reasoning that tests must pay for themselves:
 
-- `LiveContactProvider` (CNContactStore) — a system SDK boundary; exercised by
-  the UI smoke test and manual runs, not mocked
-- `AnnotationStore` (SwiftData) — Apple's framework, already tested by Apple;
-  exercised end-to-end instead
+- The live `CNContactStore` permission and enumeration flow requires a manual
+  run. UI smoke tests use the sample provider.
+- Repository integration tests exercise our SwiftData mapping and load/save
+  behavior through a real in-memory store.
 - `NotificationReminderScheduler` (UserNotifications) — same boundary logic
 
 Wrapping these in mocks would be interaction testing at its least valuable:

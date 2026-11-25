@@ -4,8 +4,29 @@ import Foundation
 /// Fixed, realistic data used by UI tests (launched with
 /// `-uitest-sample-contacts`) so the suite never depends on the simulator's
 /// address book or any permission dialog.
-final class SampleContactProvider: ContactSourceProviding {
-    func fetchAllContacts() async throws -> [Contact] {
+final class SampleContactProvider: ContactSourceProviding, AddressBookEditing {
+    private lazy var contacts = Self.samples()
+
+    func fetchAllContacts() async throws -> [Contact] { contacts }
+
+    func saveContact(_ fields: ContactCardFields, replacing original: Contact?) throws -> Contact {
+        if let original {
+            guard let index = contacts.firstIndex(where: { $0.id == original.id }) else { throw AddressBookError.notFound }
+            fields.apply(to: &contacts[index])
+            return contacts[index]
+        }
+
+        var contact = Contact(id: UUID().uuidString, firstName: "", lastName: "")
+        fields.apply(to: &contact)
+        contacts.append(contact)
+        return contact
+    }
+
+    func deleteContact(id: String) throws {
+        contacts.removeAll { $0.id == id }
+    }
+
+    private static func samples() -> [Contact] {
         let now = Date()
         return [
             Contact(
@@ -20,8 +41,7 @@ final class SampleContactProvider: ContactSourceProviding {
                 notes: "Pioneer of algorithmic thinking.",
                 tags: ["pioneers"],
                 isCloseCircle: true,
-                createdAt: now,
-                lastInteractionDate: now.addingTimeInterval(-21 * 86_400)
+                createdAt: now.addingTimeInterval(-21 * 86_400)
             ),
             Contact(
                 id: "sample-alan",
@@ -51,7 +71,7 @@ final class SampleContactProvider: ContactSourceProviding {
                 isCloseCircle: true,
                 createdAt: now,
                 lastInteractionDate: nil
-            ),
+            )
         ]
     }
 }

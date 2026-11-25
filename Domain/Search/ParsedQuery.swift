@@ -5,6 +5,8 @@ import Foundation
 public struct ParsedQuery: Equatable, Sendable {
     /// e.g. "this week" → the current calendar week.
     public var dateRange: DateInterval?
+    /// Limits a date search to a specific kind of logged touchpoint.
+    public var interactionKind: InteractionKind?
     /// e.g. "in berlin" → "berlin".
     public var location: String?
     /// e.g. "#work" → {"work"}.
@@ -14,11 +16,13 @@ public struct ParsedQuery: Equatable, Sendable {
 
     public init(
         dateRange: DateInterval? = nil,
+        interactionKind: InteractionKind? = nil,
         location: String? = nil,
         tags: Set<String> = [],
         freeText: String? = nil
     ) {
         self.dateRange = dateRange
+        self.interactionKind = interactionKind
         self.location = location
         self.tags = tags
         self.freeText = freeText

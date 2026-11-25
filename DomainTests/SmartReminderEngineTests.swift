@@ -82,7 +82,7 @@ struct SmartReminderEngineTests {
         // Then both a birthday reminder and a touchpoint reminder exist
         let expected: Set<SmartReminder.Reason> = [
             .upcomingBirthday(daysUntil: 5),
-            .overdueTouchpoint(daysOverdue: 21),
+            .overdueTouchpoint(daysOverdue: 21)
         ]
         #expect(Set(reminders.map(\.reason)) == expected)
     }

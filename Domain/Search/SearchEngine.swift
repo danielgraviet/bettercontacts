@@ -13,13 +13,17 @@ public struct SearchEngine: Sendable {
         self.minimumSimilarity = minimumSimilarity
     }
 
-    public func search(_ query: ParsedQuery, in contacts: [Contact]) -> [Contact] {
+    public func search(
+        _ query: ParsedQuery,
+        in contacts: [Contact],
+        interactionHistory: [String: [Interaction]] = [:]
+    ) -> [Contact] {
         guard !query.isEmpty else { return contacts }
 
         var candidates = contacts
         if let dateRange = query.dateRange {
             candidates = candidates.filter { contact in
-                contact.lastInteractionDate.map(dateRange.contains) == true
+                matchesDate(dateRange, kind: query.interactionKind, contact: contact, history: interactionHistory[contact.id])
             }
         }
         if let location = query.location, !location.isEmpty {
@@ -35,30 +39,49 @@ public struct SearchEngine: Sendable {
             return candidates
         }
 
-        // No embedding available for the query — fall back to plain text
-        // matching, keeping any contact that matches at least one word.
-        guard let queryVector = embedder.embedding(for: freeText) else {
-            let words = freeText.split(separator: " ").map(String.init)
-            return candidates.filter { contact in
-                words.contains { contact.searchableText.looselyContains($0) }
-            }
-        }
+        let queryVector = embedder.embedding(for: freeText)
+        let words = freeText.split(whereSeparator: \.isWhitespace).map(String.init)
 
         return candidates
-            .compactMap { contact -> (contact: Contact, similarity: Double)? in
-                guard let contactVector = embedder.embedding(for: contact.searchableText) else {
-                    return nil
-                }
-                let similarity = VectorMath.cosineSimilarity(queryVector, contactVector)
-                guard similarity >= minimumSimilarity else { return nil }
-                return (contact, similarity)
+            .compactMap { contact -> (contact: Contact, score: Double)? in
+                score(contact, for: freeText, queryVector: queryVector, words: words).map { (contact, $0) }
             }
             .sorted { lhs, rhs in
-                if lhs.similarity != rhs.similarity {
-                    return lhs.similarity > rhs.similarity
+                if lhs.score != rhs.score {
+                    return lhs.score > rhs.score
                 }
                 return lhs.contact.displayName.localizedStandardCompare(rhs.contact.displayName) == .orderedAscending
             }
             .map(\.contact)
+    }
+
+    private func matchesDate(
+        _ range: DateInterval,
+        kind: InteractionKind?,
+        contact: Contact,
+        history: [Interaction]?
+    ) -> Bool {
+        if let history {
+            return history.contains {
+                (kind == nil || $0.kind == kind) && $0.date >= range.start && $0.date < range.end
+            }
+        }
+        // Some callers have an imported last-touchpoint date without its underlying log.
+        guard let date = contact.lastInteractionDate else { return false }
+        return date >= range.start && date < range.end
+    }
+
+    private func score(_ contact: Contact, for phrase: String, queryVector: [Double]?, words: [String]) -> Double? {
+        // Literal matches rank above the maximum cosine similarity of 1.
+        if contact.displayName.looselyContains(phrase) { return 3 }
+        let text = contact.searchableText
+        if text.looselyContains(phrase) { return 2 }
+
+        guard let queryVector else {
+            return words.contains { text.looselyContains($0) } ? 0 : nil
+        }
+        guard let contactVector = embedder.embedding(for: text) else { return nil }
+        let similarity = VectorMath.cosineSimilarity(queryVector, contactVector)
+        return similarity >= minimumSimilarity ? similarity : nil
     }
 }

@@ -5,6 +5,7 @@ struct RemindersView: View {
     let viewModel: ContactListViewModel
     @State private var scheduler = NotificationReminderScheduler()
     @State private var notificationsEnabled = false
+    @State private var touchpointContact: Contact?
 
     var body: some View {
         List {
@@ -13,12 +14,14 @@ struct RemindersView: View {
                     Text("Everyone is up to date.").foregroundStyle(.secondary)
                 } else {
                     ForEach(viewModel.overdueTouchpointReminders) { reminder in
-                        NavigationLink(value: reminder.contact) {
-                            reminderRow(title: reminder.contact.displayName, detail: touchpointDetail(reminder))
-                        }
+                        touchpointReminderRow(reminder)
                     }
                 }
+                if viewModel.lastLoggedInteraction != nil {
+                    Button("Undo Touchpoint", action: viewModel.undoLastTouchpoint)
+                }
             }
+            snoozedSection
             Section("Birthdays") {
                 if viewModel.upcomingBirthdayReminders.isEmpty {
                     Text("No birthdays in the next 30 days.").foregroundStyle(.secondary)
@@ -41,7 +44,8 @@ struct RemindersView: View {
                             await scheduler.syncReminders(
                                 viewModel.reminders,
                                 now: Date(),
-                                calendar: .current
+                                calendar: .current,
+                                snoozes: viewModel.activeSnoozes
                             )
                             notificationsEnabled = true
                         }
@@ -54,8 +58,48 @@ struct RemindersView: View {
                 }
             }
         }
+        .sheet(item: $touchpointContact) { contact in
+            TouchpointEditor(contact: contact, viewModel: viewModel)
+        }
         .navigationDestination(for: Contact.self) { contact in
             ContactDetailView(contact: contact, viewModel: viewModel)
+        }
+    }
+
+    private func touchpointReminderRow(_ reminder: SmartReminder) -> some View {
+        let contact = reminder.contact
+        return HStack {
+            NavigationLink(value: contact) {
+                reminderRow(title: contact.displayName, detail: touchpointDetail(reminder))
+            }
+            Menu {
+                Button("Log Touchpoint") { touchpointContact = contact }
+                Button("Snooze for 1 Day") { viewModel.snoozeReminder(for: contact, days: 1) }
+                Button("Snooze for 1 Week") { viewModel.snoozeReminder(for: contact, days: 7) }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Actions for \(contact.displayName)")
+        }
+    }
+
+    @ViewBuilder
+    private var snoozedSection: some View {
+        if !viewModel.snoozedTouchpointReminders.isEmpty {
+            Section("Snoozed") {
+                ForEach(viewModel.snoozedTouchpointReminders) { reminder in
+                    HStack {
+                        NavigationLink(value: reminder.contact) {
+                            let date = viewModel.snoozes[reminder.contact.id]?.formatted(date: .abbreviated, time: .shortened)
+                            reminderRow(title: reminder.contact.displayName, detail: date ?? "")
+                        }
+                        Button("Resume") { viewModel.resumeReminder(for: reminder.contact) }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Resume reminder for \(reminder.contact.displayName)")
+                    }
+                }
+            }
         }
     }
 

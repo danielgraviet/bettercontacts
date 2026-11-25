@@ -74,7 +74,7 @@ public struct Contact: Identifiable, Equatable, Hashable, Codable, Sendable {
             organization ?? "",
             location ?? "",
             tags.sorted().joined(separator: " "),
-            notes,
+            notes
         ]
         .joined(separator: " ")
     }

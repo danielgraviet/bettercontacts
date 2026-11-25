@@ -2,14 +2,15 @@
 
 Your address book, with a memory. Native iOS (SwiftUI), built for keeping relationships warm:
 
-- **Natural language search** — "who did I meet this week?" just works
+- **Address book** — create, edit, delete, and share contact cards. Open the system card for additional fields.
+- **Natural language search** — find people you met during a date range using your logged touchpoint history
 - **Filtering & sorting** — close circle, tags, locations, phone presence
-- **Smart reminders** — know when a friendship is going quiet
+- **Smart reminders** — open a contact, log a touchpoint, or snooze a catch-up for a day or a week
 - **Birthdays** — never miss one (leap-year Feb 29 handled)
 - **Location tagging** — "everyone I met in Berlin"
-- **Touchpoints** — log calls/coffees/texts; staleness scored per contact
+- **Touchpoints** — log calls, meetings, and messages with a date and optional note. Edit an entry or undo the latest log
 
-Everything runs on-device. No accounts, no cloud, no tracking.
+BetterContacts processes relationship data on-device. Address-book edits follow the sync settings of the account that owns the contact.
 
 ---
 
@@ -35,8 +36,8 @@ Domain/                      # Pure Swift: all business logic. Zero UI, zero App
 DomainTests/                 # Google-style unit tests for the Domain (the star of the show)
 DomainTestSupport/           # Shared fixtures: deterministic clock, makeContact(), FakeEmbedder
 BetterContacts/              # The app: SwiftUI views + adapters (Contacts, SwiftData, NL, UN)
-BetterContactsTests/          # ViewModel tests (with a fake repository)
-BetterContactsUITests/       # One smoke test — the broad-scoped 20% of the 80/20 rule
+BetterContactsTests/          # View model and SwiftData repository tests
+BetterContactsUITests/       # Simulator tests for contact and reminder workflows
 fastlane/                    # test / beta / release lanes + App Store metadata
 .github/workflows/            # ci.yml (PRs) and deploy.yml (main → TestFlight, tags → App Store)
 ```

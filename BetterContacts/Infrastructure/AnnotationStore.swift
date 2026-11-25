@@ -46,6 +46,17 @@ final class InteractionEntity {
     }
 }
 
+@Model
+final class ReminderSnoozeEntity {
+    @Attribute(.unique) var contactID: String
+    var until: Date
+
+    init(contactID: String, until: Date) {
+        self.contactID = contactID
+        self.until = until
+    }
+}
+
 /// SwiftData-backed storage for annotations and the interaction log.
 /// The domain never talks to SwiftData directly — only this class does.
 @MainActor
@@ -57,14 +68,14 @@ final class AnnotationStore {
         // store fails to open, fall back to an in-memory one.
         let configuration = ModelConfiguration(isStoredInMemoryOnly: inMemory)
         if let container = try? ModelContainer(
-            for: ContactAnnotationEntity.self, InteractionEntity.self,
+            for: ContactAnnotationEntity.self, InteractionEntity.self, ReminderSnoozeEntity.self,
             configurations: configuration
         ) {
             context = ModelContext(container)
         } else {
             let fallbackConfiguration = ModelConfiguration(isStoredInMemoryOnly: true)
             guard let fallback = try? ModelContainer(
-                for: ContactAnnotationEntity.self, InteractionEntity.self,
+                for: ContactAnnotationEntity.self, InteractionEntity.self, ReminderSnoozeEntity.self,
                 configurations: fallbackConfiguration
             ) else {
                 preconditionFailure("SwiftData in-memory store could not be created")
@@ -76,31 +87,31 @@ final class AnnotationStore {
 
     // MARK: Annotations
 
-    func allAnnotations() throws -> [String: ContactAnnotationEntity] {
+    func allAnnotations() throws -> [String: ContactAnnotations] {
         let entities = try context.fetch(FetchDescriptor<ContactAnnotationEntity>())
-        return Dictionary(entities.map { ($0.contactID, $0) }, uniquingKeysWith: { first, _ in first })
+        return Dictionary(uniqueKeysWithValues: entities.map { entity in
+            (entity.contactID, ContactAnnotations(
+                tags: Set(entity.tags),
+                location: entity.location,
+                notes: entity.notes,
+                isCloseCircle: entity.isCloseCircle
+            ))
+        })
     }
 
-    func upsertAnnotation(for contact: Contact) throws {
-        let id = contact.id
+    func upsertAnnotation(_ annotations: ContactAnnotations, for contactID: String) throws {
         let existing = try context.fetch(
-            FetchDescriptor<ContactAnnotationEntity>(predicate: #Predicate { $0.contactID == id })
+            FetchDescriptor<ContactAnnotationEntity>(predicate: #Predicate { $0.contactID == contactID })
         ).first
-        if let existing {
-            existing.tags = contact.tags.sorted()
-            existing.location = contact.location
-            existing.notes = contact.notes
-            existing.isCloseCircle = contact.isCloseCircle
-        } else {
-            context.insert(ContactAnnotationEntity(
-                contactID: contact.id,
-                tags: contact.tags.sorted(),
-                location: contact.location,
-                notes: contact.notes,
-                isCloseCircle: contact.isCloseCircle
-            ))
+        let entity = existing ?? ContactAnnotationEntity(contactID: contactID)
+        entity.tags = annotations.tags.sorted()
+        entity.location = annotations.location
+        entity.notes = annotations.notes
+        entity.isCloseCircle = annotations.isCloseCircle
+        if existing == nil {
+            context.insert(entity)
         }
-        try context.save()
+        try save()
     }
 
     // MARK: Interactions
@@ -113,16 +124,56 @@ final class AnnotationStore {
             kind: interaction.kind.rawValue,
             note: interaction.note
         ))
-        try context.save()
+        try save()
+    }
+
+    private func save() throws {
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+    }
+
+    func update(interaction: Interaction) throws {
+        guard let entity = try interactionEntity(for: interaction) else { throw ContactStorageError.missingTouchpoint }
+        entity.date = interaction.date
+        entity.kind = interaction.kind.rawValue
+        entity.note = interaction.note
+        try save()
+    }
+
+    func remove(interaction: Interaction) throws {
+        guard let entity = try interactionEntity(for: interaction) else { return }
+        context.delete(entity)
+        try save()
+    }
+
+    private func interactionEntity(for interaction: Interaction) throws -> InteractionEntity? {
+        let id = interaction.id
+        let contactID = interaction.contactID
+        var descriptor = FetchDescriptor<InteractionEntity>(
+            predicate: #Predicate { $0.id == id && $0.contactID == contactID }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
     }
 
     func interactions(for contactID: String) throws -> [Interaction] {
-        let descriptor = FetchDescriptor<InteractionEntity>(
-            predicate: #Predicate { $0.contactID == contactID },
-            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        try fetchInteractions(matching: #Predicate { $0.contactID == contactID })
+    }
+
+    func interactionHistory() throws -> [Interaction] {
+        try fetchInteractions(matching: nil)
+    }
+
+    private func fetchInteractions(matching predicate: Predicate<InteractionEntity>?) throws -> [Interaction] {
+        let descriptor = FetchDescriptor(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\InteractionEntity.date, order: .reverse)]
         )
-        let entities = try context.fetch(descriptor)
-        return entities.map { entity in
+        return try context.fetch(descriptor).map { entity in
             Interaction(
                 id: entity.id,
                 contactID: entity.contactID,
@@ -133,19 +184,20 @@ final class AnnotationStore {
         }
     }
 
-    /// The most recent interaction date per contact, computed in one pass.
-    func latestInteractionDates() throws -> [String: Date] {
-        let entities = try context.fetch(FetchDescriptor<InteractionEntity>())
-        var latest: [String: Date] = [:]
-        for entity in entities {
-            if let current = latest[entity.contactID] {
-                if entity.date > current {
-                    latest[entity.contactID] = entity.date
-                }
-            } else {
-                latest[entity.contactID] = entity.date
-            }
+    func snoozes() throws -> [String: Date] {
+        let entities = try context.fetch(FetchDescriptor<ReminderSnoozeEntity>())
+        return Dictionary(uniqueKeysWithValues: entities.map { ($0.contactID, $0.until) })
+    }
+
+    func saveSnooze(until: Date?, for contactID: String) throws {
+        let descriptor = FetchDescriptor<ReminderSnoozeEntity>(predicate: #Predicate { $0.contactID == contactID })
+        let existing = try context.fetch(descriptor).first
+        switch (existing, until) {
+        case let (entity?, date?): entity.until = date
+        case let (nil, date?): context.insert(ReminderSnoozeEntity(contactID: contactID, until: date))
+        case let (entity?, nil): context.delete(entity)
+        case (nil, nil): return
         }
-        return latest
+        try save()
     }
 }

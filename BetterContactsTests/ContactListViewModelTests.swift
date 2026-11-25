@@ -1,6 +1,7 @@
-import Domain
-import Testing
 @testable import BetterContacts
+import Domain
+import Foundation
+import Testing
 
 /// A fake repository in the style of Google SWE book chapter 13: it holds
 /// plain, observable state that tests assert against directly. No call
@@ -9,7 +10,7 @@ import Testing
 final class FakeContactRepository: ContactRepositoryStoring {
     var stubbedContacts: [Contact] = []
     private(set) var recordedInteractions: [Interaction] = []
-    private(set) var savedContacts: [Contact] = []
+    var writeError: (any Error)?
 
     func allContacts() async throws -> [Contact] {
         stubbedContacts
@@ -20,11 +21,15 @@ final class FakeContactRepository: ContactRepositoryStoring {
     }
 
     func record(interaction: Interaction) throws {
+        if let writeError { throw writeError }
         recordedInteractions.append(interaction)
     }
 
-    func saveChanges(for contact: Contact) throws {
-        savedContacts.append(contact)
+    func saveAnnotations(_ annotations: ContactAnnotations, for contactID: String) throws {
+        if let writeError { throw writeError }
+        if let index = stubbedContacts.firstIndex(where: { $0.id == contactID }) {
+            annotations.apply(to: &stubbedContacts[index])
+        }
     }
 }
 
@@ -51,7 +56,7 @@ struct ContactListViewModelTests {
         let repository = FakeContactRepository()
         repository.stubbedContacts = [
             makeContact(id: "grace", firstName: "Grace"),
-            makeContact(id: "ada", firstName: "Ada"),
+            makeContact(id: "ada", firstName: "Ada")
         ]
 
         // When the list loads
@@ -69,7 +74,7 @@ struct ContactListViewModelTests {
         repository.stubbedContacts = [
             makeContact(id: "this-week", firstName: "Ada", lastInteractionDate: testDate(2001, 1, 4)),
             makeContact(id: "december", firstName: "Grace", lastInteractionDate: testDate(2000, 12, 15)),
-            makeContact(id: "never", firstName: "Alan", lastInteractionDate: nil),
+            makeContact(id: "never", firstName: "Alan", lastInteractionDate: nil)
         ]
 
         // When searching with a natural language query
@@ -123,8 +128,8 @@ struct ContactListViewModelTests {
         #expect(viewModel.upcomingBirthdayReminders.map(\.contact.id) == ["ada"])
     }
 
-    @Test("saving changes to a contact persists them and updates the list")
-    func savingChangesToAContactPersistsThemAndUpdatesTheList() async {
+    @Test("shows updated tags after saving contact annotations")
+    func showsUpdatedTagsAfterSavingContactAnnotations() async {
         // Given a loaded contact with no tags yet
         let repository = FakeContactRepository()
         repository.stubbedContacts = [makeContact(id: "ada", firstName: "Ada")]
@@ -132,12 +137,29 @@ struct ContactListViewModelTests {
         await viewModel.load()
 
         // When the user saves a tag for that contact
-        var updated = repository.stubbedContacts[0]
-        updated.tags = ["work"]
-        viewModel.saveChanges(to: updated)
+        let annotations = ContactAnnotations(tags: ["work"], location: nil, notes: "", isCloseCircle: false)
+        viewModel.saveAnnotations(annotations, for: "ada")
 
-        // Then the change is persisted and reflected in the list state
-        #expect(repository.savedContacts.map(\.tags) == [["work"]])
-        #expect(viewModel.allContacts.first?.tags == ["work"])
+        // Then the contact carries the tag in the list
+        #expect(viewModel.visibleContacts.first?.tags == ["work"])
+    }
+
+    @Test("keeps contacts visible when a touchpoint write fails")
+    func keepsContactsVisibleWhenATouchpointWriteFails() async {
+        // Given a loaded contact and a repository that rejects writes
+        let contact = makeContact(id: "ada", firstName: "Ada")
+        let repository = FakeContactRepository()
+        repository.stubbedContacts = [contact]
+        repository.writeError = CocoaError(.fileWriteOutOfSpace)
+        let viewModel = makeViewModel(repository: repository)
+        await viewModel.load()
+
+        // When the user tries to log a call
+        viewModel.logInteraction(contact, kind: .call)
+
+        // Then the list stays intact and reports an action failure
+        #expect(viewModel.loadError == nil)
+        #expect(viewModel.visibleContacts == [contact])
+        #expect(viewModel.actionError != nil)
     }
 }

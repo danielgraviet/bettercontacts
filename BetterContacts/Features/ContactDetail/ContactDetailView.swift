@@ -1,15 +1,21 @@
 import Domain
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContactDetailView: View {
     let contact: Contact
     let viewModel: ContactListViewModel
 
+    @Environment(\.dismiss) private var dismiss
+    @State private var isEditingContact = false
+    @State private var isShowingSystemCard = false
+    @State private var isConfirmingDelete = false
     @State private var tagsText: String = ""
     @State private var location: String = ""
     @State private var notes: String = ""
     @State private var isCloseCircle: Bool = false
-    @State private var interactions: [Interaction] = []
+    @State private var isAddingTouchpoint = false
+    @State private var editingTouchpoint: Interaction?
 
     /// The list may have fresher state for this contact than the snapshot the
     /// view was opened with; always render the current copy.
@@ -19,21 +25,70 @@ struct ContactDetailView: View {
 
     var body: some View {
         Form {
+            interactionsSection
             closeCircleSection
             phonesSection
             emailsSection
             detailsSection
             birthdaySection
-            interactionsSection
         }
         .navigationTitle(liveContact.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 Button("Save", action: save)
+                    .accessibilityLabel("Save Relationship Details")
+                if viewModel.canEditAddressBook {
+                    contactActions
+                }
             }
         }
         .onAppear(perform: loadEditableState)
+        .sheet(isPresented: $isEditingContact) {
+            ContactCardEditor(viewModel: viewModel, contact: liveContact)
+        }
+        .sheet(isPresented: $isShowingSystemCard) {
+            SystemContactCard(contactID: contact.id)
+        }
+        .onChange(of: viewModel.allContacts.contains { $0.id == contact.id }) { _, exists in
+            if !exists { dismiss() }
+        }
+        .alert("Delete \(liveContact.displayName)?", isPresented: $isConfirmingDelete) {
+            Button("Delete Contact", role: .destructive) {
+                if viewModel.deleteContact(liveContact) { dismiss() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the contact from your address book and any devices that sync with that account.")
+        }
+        .sheet(isPresented: $isAddingTouchpoint) {
+            TouchpointEditor(contact: liveContact, viewModel: viewModel)
+        }
+        .sheet(item: $editingTouchpoint) { entry in
+            TouchpointEditor(contact: liveContact, viewModel: viewModel, interaction: entry)
+        }
+    }
+
+    private var contactActions: some View {
+        Menu {
+            Button("Edit Contact", systemImage: "pencil") { isEditingContact = true }
+            if viewModel.usesSystemContacts {
+                Button("Full Contact Card", systemImage: "person.text.rectangle") {
+                    isShowingSystemCard = true
+                }
+            }
+            ShareLink(
+                item: SharedContactCard(fields: ContactCardFields(contact: liveContact)),
+                preview: SharePreview(liveContact.displayName, image: Image(systemName: "person.crop.circle"))
+            ) {
+                Label("Share Contact", systemImage: "square.and.arrow.up")
+            }
+            Button("Delete Contact", systemImage: "trash", role: .destructive) {
+                isConfirmingDelete = true
+            }
+        } label: {
+            Label("Contact Actions", systemImage: "ellipsis.circle")
+        }
     }
 
     private var closeCircleSection: some View {
@@ -49,13 +104,24 @@ struct ContactDetailView: View {
             if liveContact.phoneNumbers.isEmpty {
                 Text("No phone number").foregroundStyle(.secondary)
             } else {
-                ForEach(liveContact.phoneNumbers, id: \.self) { number in
-                    if let url = URL(string: "tel:" + number.filter { !$0.isWhitespace }) {
-                        Link(destination: url) {
+                ForEach(liveContact.phoneNumbers.indices, id: \.self) { index in
+                    let number = liveContact.phoneNumbers[index]
+                    HStack {
+                        if let url = URL(string: "tel:" + number.filter { !$0.isWhitespace }) {
+                            Link(destination: url) {
+                                Label(number, systemImage: "phone")
+                            }
+                        } else {
                             Label(number, systemImage: "phone")
                         }
-                    } else {
-                        Label(number, systemImage: "phone")
+                        Spacer()
+                        if let url = URL(string: "sms:" + number.filter { !$0.isWhitespace }) {
+                            Link(destination: url) {
+                                Image(systemName: "message")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Message \(number)")
+                        }
                     }
                 }
             }
@@ -87,7 +153,7 @@ struct ContactDetailView: View {
             }
             TextField("Location, e.g. Berlin", text: $location)
             TextField("Tags, comma separated", text: $tagsText)
-            TextField("Notes", text: $notes, axis: .vertical)
+            TextField("Private notes", text: $notes, axis: .vertical)
                 .lineLimit(3...6)
         }
     }
@@ -108,28 +174,47 @@ struct ContactDetailView: View {
                 ForEach(InteractionKind.allCases, id: \.self) { kind in
                     Button(kind.displayName) {
                         viewModel.logInteraction(liveContact, kind: kind)
-                        interactions = viewModel.interactions(for: liveContact)
                     }
                 }
+                Divider()
+                Button("Choose date and note") { isAddingTouchpoint = true }
             } label: {
                 Label("Log an interaction", systemImage: "square.and.pencil")
             }
+
+            if viewModel.lastLoggedInteraction?.contactID == contact.id {
+                Button("Undo Touchpoint", action: viewModel.undoLastTouchpoint)
+            }
+
+            let interactions = viewModel.interactions(for: liveContact)
             if interactions.isEmpty {
                 Text("Nothing logged yet.").foregroundStyle(.secondary)
             } else {
-                ForEach(interactions) { interaction in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(interaction.kind.displayName)
-                            .font(.subheadline)
-                        Text(interaction.date.formatted(date: .abbreviated, time: .omitted))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if let note = interaction.note {
-                            Text(note).font(.caption)
-                        }
-                    }
+                ForEach(interactions, content: interactionRow)
+            }
+        }
+    }
+
+    private func interactionRow(_ interaction: Interaction) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(interaction.kind.displayName)
+                    .font(.subheadline)
+                Text(viewModel.touchpointDateLabel(interaction.date))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let note = interaction.note {
+                    Text(note).font(.caption)
                 }
             }
+            Spacer()
+            Button {
+                editingTouchpoint = interaction
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Edit \(interaction.kind.displayName) touchpoint")
         }
     }
 
@@ -155,20 +240,31 @@ struct ContactDetailView: View {
         location = liveContact.location ?? ""
         notes = liveContact.notes
         isCloseCircle = liveContact.isCloseCircle
-        interactions = viewModel.interactions(for: liveContact)
     }
 
     private func save() {
-        var updated = liveContact
         let parsedTags = tagsText
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        updated.tags = Set(parsedTags)
         let trimmedLocation = location.trimmingCharacters(in: .whitespaces)
-        updated.location = trimmedLocation.isEmpty ? nil : trimmedLocation
-        updated.notes = notes
-        updated.isCloseCircle = isCloseCircle
-        viewModel.saveChanges(to: updated)
+        viewModel.saveAnnotations(
+            ContactAnnotations(
+                tags: Set(parsedTags),
+                location: trimmedLocation.isEmpty ? nil : trimmedLocation,
+                notes: notes,
+                isCloseCircle: isCloseCircle
+            ),
+            for: contact.id
+        )
+    }
+}
+
+private struct SharedContactCard: Transferable {
+    let fields: ContactCardFields
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .vCard) { try $0.fields.vCard() }
+            .suggestedFileName { _ in "Contact.vcf" }
     }
 }

@@ -23,7 +23,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSContactsUsageDescription</key>
-	<string>BetterContacts uses your contacts to power filtering, smart reminders, birthdays, and natural language search. Your contacts stay on your device.</string>
+	<string>BetterContacts reads and updates your address book so you can manage contacts, search, and set reminders.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

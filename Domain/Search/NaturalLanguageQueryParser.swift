@@ -17,6 +17,9 @@ public enum NaturalLanguageQueryParser {
         query.dateRange = extractDateRange(from: &working, now: now, calendar: calendar)
         query.tags = extractTags(from: &working)
         query.location = extractLocation(from: &working)
+        if query.dateRange != nil, ["meet", "met"].contains(where: { wholeWordRange(of: $0, in: working) != nil }) {
+            query.interactionKind = .metInPerson
+        }
         query.freeText = extractFreeText(from: working)
         return query
     }
@@ -35,8 +38,20 @@ public enum NaturalLanguageQueryParser {
         ("last month", .lastMonth),
         ("this year", .thisYear),
         ("today", .today),
-        ("yesterday", .yesterday),
+        ("yesterday", .yesterday)
     ]
+
+    /// Recognizes a meeting question whose relative date is still being typed.
+    public static func isIncompleteMeetingQuery(_ rawQuery: String) -> Bool {
+        let query = rawQuery.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let prompts = ["who did i meet", "who did you meet"]
+        guard let prompt = prompts.first(where: { query == $0 || query.hasPrefix($0 + " ") }) else {
+            return false
+        }
+        let fragment = query.dropFirst(prompt.count).drop(while: \.isWhitespace)
+        if fragment.isEmpty { return true }
+        return datePhrases.contains { $0.phrase != fragment && $0.phrase.hasPrefix(fragment) }
+    }
 
     private static func extractDateRange(
         from working: inout String,
@@ -143,8 +158,8 @@ public enum NaturalLanguageQueryParser {
     /// Words that exist only to make the query read like a sentence; they
     /// carry no meaning for matching.
     private static let fillerWords: Set<String> = [
-        "who", "did", "i", "met", "meet", "with", "that", "the", "a", "an", "my",
-        "of", "from", "in",
+        "who", "did", "i", "you", "met", "meet", "with", "that", "the", "a", "an", "my",
+        "of", "from", "in"
     ]
 
     private static func extractFreeText(from working: String) -> String? {
